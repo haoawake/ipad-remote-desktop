@@ -1,0 +1,4 @@
+aiohttp>=3.9
+mss>=10.2
+numpy>=1.24
+pillow>=10.0

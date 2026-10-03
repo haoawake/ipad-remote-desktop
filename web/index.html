@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="远程桌面">
+<meta name="theme-color" content="#0b0d12">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon-180.png">
+<link rel="manifest" href="/static/manifest.json">
+<title>远程桌面</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- 画面 -->
+<div id="stage">
+  <div id="view">
+    <canvas id="screen" width="16" height="10"></canvas>
+    <img id="cursor" alt="" hidden>
+  </div>
+  <div id="touch-dot" hidden></div>
+</div>
+
+<!-- 隐藏输入框：用来唤起 iPad 键盘 -->
+<textarea id="kbd" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"
+          enterkeyhint="enter" aria-label="键盘输入"></textarea>
+
+<!-- 顶部工具栏 -->
+<div id="toolbar">
+  <button data-act="keyboard" title="键盘"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M8 16h8"/></svg><span>键盘</span></button>
+  <button data-act="keys" title="快捷键"><svg viewBox="0 0 24 24"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/></svg><span>快捷键</span></button>
+  <button data-act="mode" title="切换操作模式" id="btn-mode"><svg viewBox="0 0 24 24" class="ic-trackpad"><rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg><svg viewBox="0 0 24 24" class="ic-direct"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10m0-1.5a1.5 1.5 0 0 1 3 0V11m0-1a1.5 1.5 0 0 1 3 0v4.5A6.5 6.5 0 0 1 11.5 21h-.6a6 6 0 0 1-4.6-2.2L3.6 15.4a1.6 1.6 0 0 1 2.4-2.1L9 16"/></svg><span id="mode-label">触控板</span></button>
+  <button data-act="privacy" title="隐私屏：电脑屏幕显示锁屏画面" id="btn-privacy" hidden><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>隐私屏</span></button>
+  <button data-act="url" title="在电脑上打开网址"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span>网址</span></button>
+  <button data-act="clip" title="剪贴板"><svg viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg><span>剪贴板</span></button>
+  <button data-act="upload" title="传文件到电脑"><svg viewBox="0 0 24 24"><path d="M12 15V4M7 9l5-5 5 5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg><span>传文件</span></button>
+  <button data-act="settings" title="设置"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>设置</span></button>
+  <button data-act="fullscreen" title="全屏" id="btn-fs"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>全屏</span></button>
+  <button data-act="hide" title="收起工具栏" class="slim"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+</div>
+<button id="toolbar-tab" hidden aria-label="展开工具栏"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+
+<div id="hud" hidden></div>
+
+<!-- 快捷键面板 -->
+<div id="keys" class="sheet" hidden>
+  <div class="keyrow">
+    <button class="mod" data-mod="ControlLeft">Ctrl</button>
+    <button class="mod" data-mod="ShiftLeft">Shift</button>
+    <button class="mod" data-mod="AltLeft">Alt</button>
+    <button class="mod" data-mod="MetaLeft">Win</button>
+    <span class="gap"></span>
+    <button data-code="Escape">Esc</button>
+    <button data-code="Tab">Tab</button>
+    <button data-code="Backspace">⌫</button>
+    <button data-code="Delete">Del</button>
+    <button data-code="Enter">回车</button>
+  </div>
+  <div class="keyrow">
+    <button data-code="Home">Home</button>
+    <button data-code="End">End</button>
+    <button data-code="PageUp">PgUp</button>
+    <button data-code="PageDown">PgDn</button>
+    <span class="gap"></span>
+    <button data-code="ArrowLeft">←</button>
+    <button data-code="ArrowUp">↑</button>
+    <button data-code="ArrowDown">↓</button>
+    <button data-code="ArrowRight">→</button>
+  </div>
+  <div class="keyrow">
+    <button data-combo="ControlLeft+KeyC">复制</button>
+    <button data-combo="ControlLeft+KeyV">粘贴</button>
+    <button data-combo="ControlLeft+KeyX">剪切</button>
+    <button data-combo="ControlLeft+KeyZ">撤销</button>
+    <button data-combo="ControlLeft+KeyA">全选</button>
+    <button data-combo="ControlLeft+KeyS">保存</button>
+    <button data-combo="ControlLeft+KeyF">查找</button>
+    <button data-combo="ControlLeft+KeyW">关标签</button>
+    <button data-combo="ControlLeft+KeyT">新标签</button>
+    <button data-combo="ControlLeft+KeyL">地址栏</button>
+  </div>
+  <div class="keyrow">
+    <button data-combo="AltLeft+Tab">切换窗口</button>
+    <button data-combo="MetaLeft+KeyD">显示桌面</button>
+    <button data-combo="MetaLeft">开始菜单</button>
+    <button data-combo="AltLeft+F4">关闭窗口</button>
+    <button data-combo="ControlLeft+ShiftLeft+Escape">任务管理器</button>
+    <button data-combo="MetaLeft+ShiftLeft+KeyS">截图</button>
+    <button data-combo="F5">F5</button>
+    <button data-combo="F11">F11</button>
+    <button data-combo="AudioVolumeDown">音量-</button>
+    <button data-combo="AudioVolumeUp">音量+</button>
+    <button data-combo="AudioVolumeMute">静音</button>
+  </div>
+  <div class="keyrow fkeys">
+    <button data-combo="F1">F1</button><button data-combo="F2">F2</button><button data-combo="F3">F3</button>
+    <button data-combo="F4">F4</button><button data-combo="F6">F6</button><button data-combo="F7">F7</button>
+    <button data-combo="F8">F8</button><button data-combo="F9">F9</button><button data-combo="F10">F10</button>
+    <button data-combo="F12">F12</button>
+    <span class="gap"></span>
+    <button data-act="rightclick">右键</button>
+    <button data-act="middleclick">中键</button>
+    <button data-act="dblclick">双击</button>
+  </div>
+</div>
+
+<!-- 弹窗：打开网址 -->
+<div id="dlg-url" class="dialog" hidden>
+  <div class="card">
+    <h3>在电脑上打开网址</h3>
+    <form id="url-form" novalidate>
+      <input id="url-input" type="text" inputmode="url" enterkeyhint="go" placeholder="例如 bilibili.com" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button type="submit" class="primary">打开</button>
+    </form>
+    <div id="url-recent" class="chips"></div>
+    <div class="row end"><button data-close>关闭</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：剪贴板 -->
+<div id="dlg-clip" class="dialog" hidden>
+  <div class="card">
+    <h3>剪贴板 / 输入长文本</h3>
+    <textarea id="clip-text" rows="6" placeholder="在这里粘贴或输入文字（支持中文）"></textarea>
+    <div class="row wrap">
+      <button id="clip-type" class="primary">直接打字到电脑</button>
+      <button id="clip-set">写入电脑剪贴板</button>
+      <button id="clip-get">读取电脑剪贴板</button>
+    </div>
+    <p class="hint">“直接打字”会把文字输入到电脑当前光标处；“写入剪贴板”之后可在电脑上 Ctrl+V。</p>
+    <div class="row end"><button data-close>关闭</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：上传文件 -->
+<div id="dlg-upload" class="dialog" hidden>
+  <div class="card">
+    <h3>传文件到电脑</h3>
+    <label class="filepick">
+      <input id="file-input" type="file" multiple>
+      <span>选择照片或文件…</span>
+    </label>
+    <div id="upload-bar" class="bar" hidden><i></i></div>
+    <p id="upload-msg" class="hint">文件会保存到电脑的“下载\iPad传来的文件”文件夹。</p>
+    <div class="row end"><button data-close>关闭</button></div>
+  </div>
+</div>
+
+<!-- 弹窗：设置 -->
+<div id="dlg-settings" class="dialog" hidden>
+  <div class="card">
+    <h3>设置</h3>
+    <div class="field">
+      <label>画质预设</label>
+      <div class="seg" id="preset">
+        <button data-preset="saver">省流量</button>
+        <button data-preset="balanced">均衡</button>
+        <button data-preset="sharp">清晰</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>分辨率 <b id="v-scale"></b></label>
+      <div class="seg" id="scale">
+        <button data-v="0.5">50%</button><button data-v="0.75">75%</button><button data-v="1">100%</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>图像质量 <b id="v-quality"></b></label>
+      <input id="quality" type="range" min="30" max="90" step="5">
+    </div>
+    <div class="field">
+      <label>最高帧率 <b id="v-fps"></b></label>
+      <div class="seg" id="fps">
+        <button data-v="10">10</button><button data-v="15">15</button><button data-v="30">30</button><button data-v="60">60</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>触控板灵敏度 <b id="v-speed"></b></label>
+      <input id="speed" type="range" min="0.6" max="3.5" step="0.1">
+    </div>
+    <div class="field" id="field-monitor" hidden>
+      <label>显示器</label>
+      <div class="seg" id="monitor"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="opt-hud"> 显示延迟 / 帧率 / 流量</label>
+    <label class="check"><input type="checkbox" id="opt-cmd"> 外接键盘的 ⌘ 当作 Ctrl 用</label>
+    <details class="help">
+      <summary>手势说明</summary>
+      <p><b>触控板模式</b>：单指滑动＝移动鼠标；轻点＝左键；双指轻点＝右键；双指滑动＝滚轮；轻点后立刻按住拖动（或长按）＝拖拽；双指捏合＝放大画面。</p>
+      <p><b>直接点击模式</b>：点哪里就点击哪里；长按＝右键；单指拖动＝拖拽；双指滑动＝滚轮；双指捏合＝放大/移动画面。</p>
+      <p><b>双指按住屏幕 1 秒</b>：打开 / 收起顶部工具栏（全屏时也能用）。</p>
+      <p>外接妙控键盘 / 鼠标 / 触控板可以直接使用。</p>
+    </details>
+    <div class="row wrap">
+      <button id="btn-refresh">刷新画面</button>
+      <button id="btn-release">松开所有按键</button>
+      <button id="btn-logout" class="danger">退出登录</button>
+    </div>
+    <div class="row end"><button data-close class="primary">完成</button></div>
+  </div>
+</div>
+
+<!-- 登录 -->
+<div id="login" hidden>
+  <form id="login-form" class="card">
+    <div class="logo"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+    <h2>远程桌面</h2>
+    <p class="hint" id="login-host">输入电脑上显示的密码</p>
+    <input id="pw" type="password" placeholder="密码" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label class="check"><input type="checkbox" id="remember" checked> 在此设备上记住 30 天</label>
+    <button type="submit" class="primary wide">连接</button>
+    <p class="err" id="login-err"></p>
+  </form>
+</div>
+
+<div id="overlay" hidden><div class="spinner"></div><p id="overlay-text">正在连接…</p></div>
+<div id="toast" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

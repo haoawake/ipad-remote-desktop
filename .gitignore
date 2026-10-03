@@ -1,0 +1,11 @@
+# 运行时生成：含密码、会话、日志、个人地址
+config.json
+访问地址.txt
+data/
+
+# 首次运行自动下载
+bin/
+
+__pycache__/
+*.pyc
+.venv/
