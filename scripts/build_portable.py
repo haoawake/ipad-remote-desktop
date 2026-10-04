@@ -88,7 +88,8 @@ def main():
             if p.is_file():
                 z.write(p, Path(NAME) / p.relative_to(STAGE))
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
-    (DIST / "SHA256SUMS.txt").write_text(f"{digest}  {out.name}\n", "utf-8")
+    # 换行固定用 LF：Windows 上默认写成 CRLF，sha256sum -c 就读不了了
+    (DIST / "SHA256SUMS.txt").write_text(f"{digest}  {out.name}\n", "utf-8", newline="\n")
     print(f"\n完成：{out}（{out.stat().st_size / 1048576:.1f} MB）")
 
 
