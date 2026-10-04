@@ -1,4 +1,6 @@
 @echo off
 cd /d "%~dp0"
-python app\main.py --stop
+set "PY=python"
+if exist "runtime\python.exe" set "PY=runtime\python.exe"
+"%PY%" app\main.py --stop
 timeout /t 4 >nul

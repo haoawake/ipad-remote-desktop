@@ -1,4 +1,6 @@
 @echo off
 cd /d "%~dp0"
-python app\main.py --autostart on
+set "PY=python"
+if exist "runtime\python.exe" set "PY=runtime\python.exe"
+"%PY%" app\main.py --autostart on
 pause

@@ -26,15 +26,21 @@ iPad Safari ──(Tailscale  or  Cloudflare Tunnel)──▶ 127.0.0.1:8765  ai
 ## Requirements
 
 - Windows 10 2004+ / Windows 11 (the privacy screen needs `WDA_EXCLUDEFROMCAPTURE`)
-- Python 3.10+
+- Nothing else for the portable package; Python 3.10+ only when running from source
 - [Tailscale](https://tailscale.com/download) on the PC and the iPad, signed in to the same account (recommended)
 
 ## Quick start
+
+Download **`iPad-Remote-Desktop-win-x64.zip`** from [Releases](https://github.com/haoawake/ipad-remote-desktop/releases/latest), unzip it somewhere permanent, and double-click `启动远程桌面.bat`. The portable package bundles an embedded Python with all dependencies, so nothing needs to be installed.
+
+To run from source instead:
 
 ```bat
 pip install -r requirements.txt
 启动远程桌面.bat
 ```
+
+The scripts use the bundled `runtime\python.exe` when it exists and fall back to `python` on `PATH`. `python scripts/build_portable.py <version>` builds the portable package.
 
 On first run the service generates a random password and `config.json`, downloads `cloudflared.exe` (~50 MB, from Cloudflare's official GitHub release), and prints the password plus the Tailscale and backup addresses (also written to `访问地址.txt`).
 

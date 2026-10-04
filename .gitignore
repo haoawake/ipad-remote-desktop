@@ -9,3 +9,7 @@ bin/
 __pycache__/
 *.pyc
 .venv/
+
+# 打包产物（scripts/build_portable.py）
+build/
+dist/

@@ -1,0 +1,65 @@
+# 推送 v* 标签就打包免安装版，发布成 Release。
+# 发版步骤：在 CHANGELOG.md 顶部写好这一版的说明（标题形如「## v1.2.0」），
+# 提交后 git tag v1.2.0 && git push origin v1.2.0。
+#
+# 手动运行（workflow_dispatch）只打包、把产物存成 artifact，不发 Release，用来检查流程本身。
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: check
+        run: python -m compileall -q app scripts
+
+      - name: build
+        run: |
+          ver=dev
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; fi
+          python scripts/build_portable.py "$ver"
+
+      - name: smoke test
+        # 用包里自带的 Python 加载所有依赖，确认解压就能用
+        run: build/iPad-Remote-Desktop/runtime/python.exe -c "import aiohttp, mss, numpy, PIL.Image; print('ok', numpy.__version__)"
+
+      - name: upload artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+      - name: publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          # 从 CHANGELOG.md 里取出「## <tag>」这一节作为 Release 说明
+          awk -v t="## $tag" 'index($0, t) == 1 { p = 1; next } /^## / { p = 0 } p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "iPad 远程桌面 $tag" > notes.md
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* --title "iPad 远程桌面 $tag" --notes-file notes.md
+          fi

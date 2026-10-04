@@ -12,14 +12,15 @@
 
 ## 一、安装（电脑上，只需一次）
 
-1. 安装 [Python 3.10+](https://www.python.org/downloads/)（安装时勾选 “Add python.exe to PATH”）。
-2. 双击 **`安装依赖.bat`**（等价于 `pip install -r requirements.txt`）。
-3. 安装 [Tailscale](https://tailscale.com/download) 并登录。iPad 也装 Tailscale App，登录**同一个账号**。
-4. 双击 **`启动远程桌面.bat`**。第一次运行会：
+1. 到 [Releases 页面](https://github.com/haoawake/ipad-remote-desktop/releases/latest) 下载 **`iPad-Remote-Desktop-win-x64.zip`**，解压到一个固定的位置（比如 `D:\iPad远程桌面`）。这是免安装版，已经自带 Python 和所有依赖，**不用另外装 Python**。
+2. 安装 [Tailscale](https://tailscale.com/download) 并登录。iPad 也装 Tailscale App，登录**同一个账号**。
+3. 双击 **`启动远程桌面.bat`**。如果 Windows 提示“无法验证发布者”，点「运行」。第一次运行会：
    - 生成随机密码和配置文件 `config.json`；
    - 自动下载 `cloudflared.exe`（约 50MB，来自 Cloudflare 官方 GitHub Release）；
    - 在窗口里显示登录密码、Tailscale 地址、备用地址和 ntfy 频道（同时写入 `访问地址.txt`）。
-5. （可选）双击 **`开机自启-开启.bat`**，以后登录 Windows 后会自动在后台启动。
+4. （可选）双击 **`开机自启-开启.bat`**，以后登录 Windows 后会自动在后台启动。
+
+> **从源码运行**：先安装 [Python 3.10+](https://www.python.org/downloads/)（安装时勾选 “Add python.exe to PATH”），双击 **`安装依赖.bat`**（等价于 `pip install -r requirements.txt`），其余步骤一样。启动脚本发现旁边有 `runtime\python.exe`（免安装版自带的）就用它，否则用系统里的 Python。
 
 > 不需要管理员权限。Tailscale 通道用 `tailscale serve` 把 tailnet 的 80 端口转到本机，不用改防火墙。
 
@@ -87,7 +88,8 @@ iPad 一连上，电脑屏幕就会盖上一层锁屏画面（时钟 + “此电
 | `停止远程桌面.bat` | 停止服务 |
 | `开机自启-开启.bat` / `开机自启-关闭.bat` | 开启或关闭开机自启 |
 | `重置密码.bat` | 换一个新密码，所有设备需要重新登录 |
-| `安装依赖.bat` | 安装 Python 依赖 |
+| `安装依赖.bat` | 安装 Python 依赖（只有从源码运行才需要） |
+| `runtime\` | 免安装版自带的 Python 运行环境 |
 | `访问地址.txt` | 当前密码和地址（运行后自动生成） |
 | `config.json` | 配置（第一次运行自动生成） |
 | `data\run.log` | 运行日志（登录记录、错误） |
