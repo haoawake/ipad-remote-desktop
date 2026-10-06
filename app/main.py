@@ -1,11 +1,13 @@
-"""入口：加载配置 → 启动 Web 服务 → 拉起穿透通道 → 在控制台显示访问方式。"""
+"""入口：加载配置 → 启动 Web 服务 → 拉起穿透通道 → 在控制台显示访问方式。
+
+macOS 上这里只负责“服务进程”（mac_main.py --worker）：做的事和 Windows 一样，
+只是访问方式不打印到控制台，而是一行行 JSON 发给状态窗口进程（mac_ui.py）去显示。
+"""
 import asyncio
 import ctypes
-import json
 import logging
-import logging.handlers
 import os
-import secrets
+import signal
 import subprocess
 import sys
 import time
@@ -13,65 +15,22 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import winapi  # noqa: E402
+from common import (CONFIG, DATA, MAC, ROOT, STATUS_FILE, BIN,  # noqa: E402
+                    gen_password, load_config, save_config, setup_logging)
 
-winapi.set_dpi_aware()  # 必须最先执行
+if MAC:
+    import macapi as osapi  # noqa: E402
+else:
+    import winapi as osapi  # noqa: E402
+
+osapi.set_dpi_aware()  # 必须最先执行
 
 from aiohttp import web  # noqa: E402
 
 import server  # noqa: E402
 import tunnels  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-CONFIG = ROOT / "config.json"
-STATUS_FILE = ROOT / "访问地址.txt"
 log = logging.getLogger("rd")
-
-
-def gen_password():
-    alphabet = "abcdefghjkmnpqrstuvwxyz23456789"  # 去掉了 i l o 0 1 这类易混字符
-    return "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3))
-
-
-def load_config():
-    cfg = {}
-    if CONFIG.exists():
-        cfg = json.loads(CONFIG.read_text("utf-8-sig"))
-    defaults = {
-        "password": gen_password(),
-        "port": 8765,
-        "tailscale": True,
-        "cloudflare": True,
-        "ntfy_topic": "rd-" + secrets.token_hex(8),
-        "keep_display_on": True,
-        "privacy": True,
-        "privacy_block_input": True,
-        "upload_dir": "%USERPROFILE%\\Downloads\\iPad传来的文件",
-    }
-    changed = False
-    for k, v in defaults.items():
-        if k not in cfg:
-            cfg[k] = v
-            changed = True
-    if changed:
-        CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
-    return cfg
-
-
-def setup_logging():
-    DATA.mkdir(exist_ok=True)
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%m-%d %H:%M:%S")
-    fh = logging.handlers.RotatingFileHandler(DATA / "run.log", maxBytes=2 << 20, backupCount=2, encoding="utf-8")
-    fh.setFormatter(fmt)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(fmt)
-    ch.setLevel(logging.INFO)
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    root.addHandler(fh)
-    root.addHandler(ch)
-    logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
 
 def disable_quick_edit():
@@ -96,8 +55,9 @@ def already_running(port):
 
 
 class Dashboard:
-    def __init__(self, cfg, ts, cf):
+    def __init__(self, cfg, ts, cf, emit=None):
         self.cfg, self.ts, self.cf = cfg, ts, cf
+        self.emit = emit  # macOS：把状态交给状态窗口显示；Windows：None，直接打印
         self.last_cf_pushed = None
         self.last_push_time = 0
         self.dirty = asyncio.Event()
@@ -127,6 +87,16 @@ class Dashboard:
         lines.append("=" * 64)
         return "\n".join(lines)
 
+    def snapshot(self):
+        ts, cf = self.ts, self.cf
+        return {
+            "t": "status", "password": self.cfg["password"], "port": self.cfg["port"],
+            "ts": {"on": bool(ts), "state": ts.state if ts else "已关闭", "urls": ts.urls() if ts else [],
+                   "installed": bool(ts and ts.available)},
+            "cf": {"on": bool(cf), "state": cf.state if cf else "已关闭", "url": cf.url if cf else None},
+            "ntfy": self.cfg.get("ntfy_topic") or "",
+        }
+
     def write_file(self, text):
         try:
             STATUS_FILE.write_text(text.strip() + "\n\n（此文件由程序自动生成，地址变化时会更新）\n", "utf-8")
@@ -154,7 +124,10 @@ class Dashboard:
                 await asyncio.sleep(1.5)  # 合并短时间内的多次变化
                 self.dirty.clear()
                 text = self.render()
-                print(text, flush=True)
+                if self.emit:
+                    self.emit(self.snapshot())
+                else:
+                    print(text, flush=True)
                 self.write_file(text)
             if self.cf and self.cf.ready and self.cf.url:
                 if self.cf.url != self.last_cf_pushed:
@@ -163,7 +136,7 @@ class Dashboard:
                     await self.push(refresh=True)
 
 
-async def amain(cfg):
+async def amain(cfg, emit=None):
     port = cfg["port"]
     app = server.make_app(cfg)
     runner = web.AppRunner(app, access_log=None)
@@ -171,21 +144,40 @@ async def amain(cfg):
     await web.TCPSite(runner, "127.0.0.1", port).start()
     log.info("Web 服务已启动 127.0.0.1:%d", port)
 
-    dash = Dashboard(cfg, None, None)
+    dash = Dashboard(cfg, None, None, emit)
     tasks = []
     if cfg.get("tailscale", True):
         dash.ts = tunnels.Tailscale(port, dash.changed)
         tasks.append(asyncio.create_task(dash.ts.loop()))
     if cfg.get("cloudflare", True):
-        dash.cf = tunnels.CloudflareQuick(port, ROOT / "bin" / "cloudflared.exe", dash.changed)
+        dash.cf = tunnels.CloudflareQuick(port, BIN / tunnels.CLOUDFLARED_NAME, dash.changed)
         tasks.append(asyncio.create_task(dash.cf.loop()))
     tasks.append(asyncio.create_task(dash.loop()))
+    if emit:
+        tasks.append(asyncio.create_task(report_remote(app, emit)))
     dash.changed()
 
-    # 每 30 秒刷新一次防休眠（某些电源策略会重置）
+    try:
+        # 每 30 秒刷新一次防休眠（某些电源策略会重置）
+        while True:
+            osapi.keep_awake(cfg.get("keep_display_on", True))
+            await asyncio.sleep(30)
+    finally:
+        if dash.cf:
+            dash.cf.stop()
+
+
+async def report_remote(app, emit):
+    """macOS：告诉状态窗口进程“iPad 是否在用”——隐私屏的文字和“按 Enter 解锁”要看这个。"""
+    last = None
     while True:
-        winapi.keep_awake(cfg.get("keep_display_on", True))
-        await asyncio.sleep(30)
+        cur = (server.remote_active(app), len(app["sessions"]))
+        if cur != last:
+            if last and last[0] and not cur[0] and hasattr(osapi, "restore_input_source"):
+                osapi.restore_input_source()
+            last = cur
+            emit({"t": "remote", "active": cur[0], "sessions": cur[1]})
+        await asyncio.sleep(0.5)
 
 
 PID_FILE = DATA / "pid.txt"
@@ -229,7 +221,7 @@ def set_autostart(on):
 def new_password():
     cfg = load_config()
     cfg["password"] = gen_password()
-    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), "utf-8")
+    save_config(cfg)
     try:
         (DATA / "sessions.json").unlink()
     except OSError:
@@ -240,7 +232,50 @@ def new_password():
         print("服务已停止，请重新双击“启动远程桌面.bat”。")
 
 
+def worker_main():
+    """macOS 服务进程。由状态窗口进程拉起：stdout/stdin 是和它通信的通道，日志只写文件和 stderr。"""
+    import macipc
+    macipc.init()
+    ROOT.mkdir(parents=True, exist_ok=True)  # 平时状态窗口进程已经建好了；单独运行服务进程（比如发版时的冒烟测试）要自己建
+    os.chdir(ROOT)
+    setup_logging(stream=sys.stderr)
+    cfg = load_config()
+    if already_running(cfg["port"]):
+        log.error("端口 %d 上已经有一个远程桌面服务在运行", cfg["port"])
+        sys.exit(3)
+    PID_FILE.write_text(str(os.getpid()))
+
+    async def run():
+        loop = asyncio.get_running_loop()
+        main_task = asyncio.current_task()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, main_task.cancel)
+        try:
+            await amain(cfg, emit=macipc.send)
+        except asyncio.CancelledError:
+            log.info("服务进程收到退出信号")
+
+    code = 0
+    try:
+        asyncio.run(run())
+    except OSError as e:
+        log.error("启动失败：%s", e)
+        macipc.send({"t": "fatal", "msg": str(e)})
+        code = 2
+    # 直接 _exit：读 stdin 的通信线程还卡在 read 里，走正常的解释器收尾会报
+    # “Fatal Python error: _enter_buffered_busy”并 abort，系统随之弹出“意外退出”的崩溃报告
+    logging.shutdown()
+    os._exit(code)
+
+
 def main():
+    if MAC:
+        if "--worker" in sys.argv:
+            worker_main()
+        else:
+            import mac_ui
+            mac_ui.run()
+        return
     os.chdir(ROOT)
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     if arg == "--stop":

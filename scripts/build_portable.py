@@ -72,7 +72,9 @@ def main():
     for name in FILES:
         src = ROOT / name
         if src.is_dir():
-            shutil.copytree(src, STAGE / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            # macOS 专用的模块（mac_*.py、macapi.py、macipc.py、privacy_mac.py）不放进 Windows 包
+            shutil.copytree(src, STAGE / name, ignore=shutil.ignore_patterns(
+                "__pycache__", "*.pyc", "mac*.py", "privacy_mac.py"))
         elif name.endswith(".bat"):
             # cmd.exe 的 goto 在只有 LF 换行的脚本里会找错标签，统一成 CRLF
             text = src.read_bytes().replace(CR + LF, LF).replace(LF, CR + LF)

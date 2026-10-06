@@ -3,14 +3,23 @@
 每个连接一个 Encoder，运行在自己的单线程里（mss 不能跨线程用）。
 只发送变化的 64x64 块；画面静止 0.4 秒后，把之前低质量发出的块用高质量补发一次，
 这样动的时候省流量、停下来的时候文字清晰。
+
+截屏：Windows 用 mss；macOS 用 macapi.Grabber（直接调 CoreGraphics，能避开隐私屏窗口），
+两者对 Encoder 来说是同一个样子：.monitors 列表 + .grab(显示器) 返回 width/height/bgra。
 """
 import io
 import struct
+import sys
 import time
 
-import mss
 import numpy as np
 from PIL import Image
+
+MAC = sys.platform == "darwin"
+if MAC:
+    import macapi
+else:
+    import mss
 
 TILE = 64
 REFINE_DELAY = 0.4
@@ -18,6 +27,8 @@ REFINE_QUALITY = 88
 
 
 def list_monitors():
+    if MAC:
+        return macapi.list_monitors()
     with mss.MSS() as s:
         return [{"index": i, "left": m["left"], "top": m["top"], "width": m["width"], "height": m["height"]}
                 for i, m in enumerate(s.monitors) if i > 0]
@@ -48,7 +59,7 @@ class Encoder:
 
     def _mon(self):
         if self.sct is None:
-            self.sct = mss.MSS()
+            self.sct = macapi.Grabber() if MAC else mss.MSS()
         mons = self.sct.monitors
         if self.monitor < 1 or self.monitor >= len(mons):
             self.monitor = 1
@@ -57,8 +68,11 @@ class Encoder:
     def geometry(self):
         m = self._mon()
         sw, sh = max(1, round(m["width"] * self.scale)), max(1, round(m["height"] * self.scale))
-        return {"left": m["left"], "top": m["top"], "width": m["width"], "height": m["height"],
-                "sw": sw, "sh": sh, "scale": self.scale, "monitor": self.monitor}
+        g = {"left": m["left"], "top": m["top"], "width": m["width"], "height": m["height"],
+             "sw": sw, "sh": sh, "scale": self.scale, "monitor": self.monitor}
+        if "ps" in m:  # macOS：每个“点”有几个像素（Retina 是 2），注入鼠标时要换算回点
+            g["ps"] = m["ps"]
+        return g
 
     # ---- 主流程
     def produce(self):
@@ -68,7 +82,12 @@ class Encoder:
         if geom != self.geom:
             self.geom = geom
             self.prev = None
-        shot = self.sct.grab(m)
+        if MAC:
+            shot = self.sct.grab(m, self.scale)
+            if shot is None:  # 隐私屏正在出现/消失，这一帧先不截，免得把它截进去
+                return None, None
+        else:
+            shot = self.sct.grab(m)
         W, H = shot.width, shot.height
         cur = np.frombuffer(shot.bgra, np.uint32).reshape(H, W)
         ty, tx = -(-H // TILE), -(-W // TILE)
@@ -103,6 +122,8 @@ class Encoder:
         self.frame_id = (self.frame_id + 1) & 0xFFFFFFFF
         parts = []
         s = self.scale
+        if W != geom["width"]:  # macOS 低分辨率档直接按“点”截（像素少 4 倍），这里补上换算
+            s = self.scale * geom["width"] / W
         for (rx, ry, rw, rh), q in jobs:
             x0, y0 = rx * TILE, ry * TILE
             x1, y1 = min(W, (rx + rw) * TILE), min(H, (ry + rh) * TILE)

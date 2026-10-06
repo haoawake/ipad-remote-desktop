@@ -1,7 +1,12 @@
-"""Windows 底层接口：DPI、鼠标键盘注入、光标形状、剪贴板、防休眠。全部用 ctypes，无需 pywin32。"""
+"""Windows 底层接口：DPI、鼠标键盘注入、光标形状、剪贴板、防休眠。全部用 ctypes，无需 pywin32。
+
+macOS 上对应的是 macapi.py，两边对外是同一组函数名。
+"""
 import base64
 import ctypes
 import io
+import os
+import socket
 import time
 from ctypes import wintypes as W
 
@@ -10,6 +15,25 @@ gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 ULONG_PTR = ctypes.c_size_t
+OS = "win"
+
+
+# ---------------------------------------------------------------- 坐标 / 杂项
+def to_global(g, x, y):
+    """iPad 发来的坐标（相对当前显示器的像素）→ 虚拟桌面像素坐标。"""
+    return g["left"] + x, g["top"] + y
+
+
+def to_local(g, x, y):
+    return x - g["left"], y - g["top"]
+
+
+def host_name():
+    return socket.gethostname()
+
+
+def open_url(url):
+    os.startfile(url)
 
 
 # ---------------------------------------------------------------- DPI / 屏幕

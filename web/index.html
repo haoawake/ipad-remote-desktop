@@ -49,7 +49,8 @@
 
 <!-- 快捷键面板 -->
 <div id="keys" class="sheet" hidden>
-  <div class="keyrow">
+  <!-- data-host="win" / "mac"：按电脑的系统显示对应的一组（服务端在 hello 里告诉网页是哪种电脑） -->
+  <div class="keyrow" data-host="win">
     <button class="mod" data-mod="ControlLeft">Ctrl</button>
     <button class="mod" data-mod="ShiftLeft">Shift</button>
     <button class="mod" data-mod="AltLeft">Alt</button>
@@ -59,6 +60,18 @@
     <button data-code="Tab">Tab</button>
     <button data-code="Backspace">⌫</button>
     <button data-code="Delete">Del</button>
+    <button data-code="Enter">回车</button>
+  </div>
+  <div class="keyrow" data-host="mac" hidden>
+    <button class="mod" data-mod="MetaLeft">⌘ Command</button>
+    <button class="mod" data-mod="ShiftLeft">⇧ Shift</button>
+    <button class="mod" data-mod="AltLeft">⌥ Option</button>
+    <button class="mod" data-mod="ControlLeft">⌃ Control</button>
+    <span class="gap"></span>
+    <button data-code="Escape">Esc</button>
+    <button data-code="Tab">Tab</button>
+    <button data-code="Backspace">⌫</button>
+    <button data-code="Delete">⌦</button>
     <button data-code="Enter">回车</button>
   </div>
   <div class="keyrow">
@@ -72,7 +85,7 @@
     <button data-code="ArrowDown">↓</button>
     <button data-code="ArrowRight">→</button>
   </div>
-  <div class="keyrow">
+  <div class="keyrow" data-host="win">
     <button data-combo="ControlLeft+KeyC">复制</button>
     <button data-combo="ControlLeft+KeyV">粘贴</button>
     <button data-combo="ControlLeft+KeyX">剪切</button>
@@ -84,7 +97,21 @@
     <button data-combo="ControlLeft+KeyT">新标签</button>
     <button data-combo="ControlLeft+KeyL">地址栏</button>
   </div>
-  <div class="keyrow">
+  <div class="keyrow" data-host="mac" hidden>
+    <button data-combo="MetaLeft+KeyC">复制</button>
+    <button data-combo="MetaLeft+KeyV">粘贴</button>
+    <button data-combo="MetaLeft+KeyX">剪切</button>
+    <button data-combo="MetaLeft+KeyZ">撤销</button>
+    <button data-combo="MetaLeft+ShiftLeft+KeyZ">重做</button>
+    <button data-combo="MetaLeft+KeyA">全选</button>
+    <button data-combo="MetaLeft+KeyS">保存</button>
+    <button data-combo="MetaLeft+KeyF">查找</button>
+    <button data-combo="MetaLeft+KeyW">关标签</button>
+    <button data-combo="MetaLeft+KeyT">新标签</button>
+    <button data-combo="MetaLeft+KeyL">地址栏</button>
+    <button data-combo="MetaLeft+KeyR">刷新</button>
+  </div>
+  <div class="keyrow" data-host="win">
     <button data-combo="AltLeft+Tab">切换窗口</button>
     <button data-combo="MetaLeft+KeyD">显示桌面</button>
     <button data-combo="MetaLeft">开始菜单</button>
@@ -93,6 +120,22 @@
     <button data-combo="MetaLeft+ShiftLeft+KeyS">截图</button>
     <button data-combo="F5">F5</button>
     <button data-combo="F11">F11</button>
+    <button data-combo="AudioVolumeDown">音量-</button>
+    <button data-combo="AudioVolumeUp">音量+</button>
+    <button data-combo="AudioVolumeMute">静音</button>
+  </div>
+  <div class="keyrow" data-host="mac" hidden>
+    <button data-combo="MetaLeft+Tab">切换应用</button>
+    <button data-combo="ControlLeft+ArrowUp">调度中心</button>
+    <button data-combo="F11">显示桌面</button>
+    <button data-combo="MetaLeft+Space">聚焦搜索</button>
+    <button data-combo="ControlLeft+Space">切换输入法</button>
+    <button data-combo="ControlLeft+MetaLeft+KeyF">全屏</button>
+    <button data-combo="MetaLeft+KeyQ">退出应用</button>
+    <button data-combo="AltLeft+MetaLeft+Escape">强制退出</button>
+    <button data-launch="activity">活动监视器</button>
+    <button data-launch="finder">访达</button>
+    <button data-combo="ShiftLeft+MetaLeft+Digit4">截图</button>
     <button data-combo="AudioVolumeDown">音量-</button>
     <button data-combo="AudioVolumeUp">音量+</button>
     <button data-combo="AudioVolumeMute">静音</button>
@@ -132,7 +175,7 @@
       <button id="clip-set">写入电脑剪贴板</button>
       <button id="clip-get">读取电脑剪贴板</button>
     </div>
-    <p class="hint">“直接打字”会把文字输入到电脑当前光标处；“写入剪贴板”之后可在电脑上 Ctrl+V。</p>
+    <p class="hint" data-mac="“直接打字”会把文字输入到 Mac 当前光标处；“写入剪贴板”之后可在 Mac 上 ⌘V。">“直接打字”会把文字输入到电脑当前光标处；“写入剪贴板”之后可在电脑上 Ctrl+V。</p>
     <div class="row end"><button data-close>关闭</button></div>
   </div>
 </div>
@@ -146,7 +189,7 @@
       <span>选择照片或文件…</span>
     </label>
     <div id="upload-bar" class="bar" hidden><i></i></div>
-    <p id="upload-msg" class="hint">文件会保存到电脑的“下载\iPad传来的文件”文件夹。</p>
+    <p id="upload-msg" class="hint" data-mac="文件会保存到 Mac 的“下载/iPad传来的文件”文件夹。">文件会保存到电脑的“下载\iPad传来的文件”文件夹。</p>
     <div class="row end"><button data-close>关闭</button></div>
   </div>
 </div>
@@ -188,7 +231,7 @@
       <div class="seg" id="monitor"></div>
     </div>
     <label class="check"><input type="checkbox" id="opt-hud"> 显示延迟 / 帧率 / 流量</label>
-    <label class="check"><input type="checkbox" id="opt-cmd"> 外接键盘的 ⌘ 当作 Ctrl 用</label>
+    <label class="check"><input type="checkbox" id="opt-cmd"> <span data-mac="外接键盘的 ⌘ 当作 Control 用（不勾就是 Mac 的 ⌘）">外接键盘的 ⌘ 当作 Ctrl 用</span></label>
     <details class="help">
       <summary>手势说明</summary>
       <p><b>触控板模式</b>：单指滑动＝移动鼠标；轻点＝左键；双指轻点＝右键；双指滑动＝滚轮；轻点后立刻按住拖动（或长按）＝拖拽；双指捏合＝放大画面。</p>

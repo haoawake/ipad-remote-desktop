@@ -1,8 +1,15 @@
-# 推送 v* 标签就打包免安装版，发布成 Release。
+# 推送 v* 标签就打包，发布成 Release：
+#   iPad-Remote-Desktop-win-x64.zip   Windows 免安装版（windows job）
+#   iPad-Remote-Desktop-mac-arm64.zip macOS 版，里面是「iPad 远程桌面.app」（macos job）
+#   SHA256SUMS.txt                    上面两个包的校验和
 # 发版步骤：在 CHANGELOG.md 顶部写好这一版的说明（标题形如「## v1.2.0」），
 # 提交后 git tag v1.2.0 && git push origin v1.2.0。
 #
 # 手动运行（workflow_dispatch）只打包、把产物存成 artifact，不发 Release，用来检查流程本身。
+#
+# publish 的门是 `needs.windows.result == 'success'`（加 always()），不是 needs 默认那套：
+# 默认规则下 macos 一失败 publish 就被悄悄跳过，结果“标签推了、Release 没有”，哪儿都不报错。
+# 现在 Windows 包是底线，它成了就发；macos 失败时 run 照样标红（该看见），只是少挂一个包。
 
 name: release
 
@@ -14,14 +21,15 @@ on:
 permissions:
   contents: write
 
+env:
+  PYTHONUTF8: '1'
+
 jobs:
-  release:
+  windows:
     runs-on: windows-latest
     defaults:
       run:
         shell: bash
-    env:
-      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -42,24 +50,88 @@ jobs:
         # 用包里自带的 Python 加载所有依赖，确认解压就能用
         run: build/iPad-Remote-Desktop/runtime/python.exe -c "import aiohttp, mss, numpy, PIL.Image; print('ok', numpy.__version__)"
 
-      - name: upload artifact
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/*
+          name: pkg-win
+          path: dist/iPad-Remote-Desktop-win-x64.zip
+          if-no-files-found: error
+
+  macos:
+    # 只出 Apple 芯片的包：GitHub 已经没有 Intel 的 macOS 机器了。钉死 macos-15，别用 latest。
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: deps
+        run: bash scripts/mac_deps.sh
+
+      - name: unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: build
+        run: |
+          ver=0.0.0
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; fi
+          python scripts/build_mac.py "$ver"
+
+      - name: smoke test
+        # 从 zip 解出来的 .app 能跑：签名完整，服务进程能起来、能答话
+        run: |
+          d=$(mktemp -d)
+          ditto -x -k dist/iPad-Remote-Desktop-mac-arm64.zip "$d"
+          app="$d/iPad 远程桌面.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          "$app/Contents/MacOS/iPadRemoteDesktop" --worker > "$d/worker.log" 2>&1 &
+          pid=$!
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8765/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8765/health | grep -q ok || { cat "$d/worker.log"; exit 1; }
+          kill $pid
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-mac
+          path: dist/iPad-Remote-Desktop-mac-arm64.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, macos]
+    if: always() && github.ref_type == 'tag' && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 不写 name = 把所有 artifact 都下下来。macos 失败的话就只有 Windows 的包
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          path: dl
 
       - name: publish release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           tag="$GITHUB_REF_NAME"
+          mkdir rel
+          find dl -name '*.zip' -exec cp {} rel/ \;
+          ls -la rel
+          [ -f rel/iPad-Remote-Desktop-win-x64.zip ] || { echo "::error::no Windows zip"; exit 1; }
+          [ -f rel/iPad-Remote-Desktop-mac-arm64.zip ] || echo "::warning::no macOS zip - that build failed"
+          (cd rel && sha256sum *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
           # 从 CHANGELOG.md 里取出「## <tag>」这一节作为 Release 说明
           awk -v t="## $tag" 'index($0, t) == 1 { p = 1; next } /^## / { p = 0 } p' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "iPad 远程桌面 $tag" > notes.md
           if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" --title "iPad 远程桌面 $tag" --notes-file notes.md --draft=false
+            gh release upload "$tag" rel/* --clobber
           else
-            gh release create "$tag" dist/* --title "iPad 远程桌面 $tag" --notes-file notes.md
+            gh release create "$tag" rel/* --title "iPad 远程桌面 $tag" --notes-file notes.md
           fi
+          gh release view "$tag" --json assets --jq '.assets[].name'

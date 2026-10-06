@@ -21,7 +21,8 @@
     mode: store.get('mode', 'trackpad'),
     speed: store.get('speed', 1.6),
     hud: store.get('hud', false),
-    cmdAsCtrl: store.get('cmdAsCtrl', true),
+    cmdAsCtrl: store.get('cmdAsCtrl', true),       // Windows 电脑：⌘ 默认当 Ctrl
+    cmdAsCtrlMac: store.get('cmdAsCtrlMac', false), // Mac 电脑：⌘ 默认就是 ⌘
     toolbar: store.get('toolbar', true),
     privacy: store.get('privacy', true),
     stream: Object.assign({}, PRESETS.balanced, store.get('stream', {})),
@@ -30,6 +31,7 @@
   // ------------------------------------------------------------------ 状态
   let ws = null, geom = null, monitors = [], retry = 0, reconnectTimer = null, appStarted = false;
   let drawQueue = Promise.resolve(), lockedShown = false;
+  let hostOS = 'win'; // 'win' | 'mac'，由服务端告诉我们
   const cur = { x: 0, y: 0, vis: true, hx: 0, hy: 0, w: 0, h: 0, localUntil: 0, hasShape: false };
   const vt = { fit: 1, zoom: 1, tx: 0, ty: 0, W: 1, H: 1 };
   const stats = { bytes: 0, frames: 0, rtt: null };
@@ -43,6 +45,22 @@
   }
   function showOverlay(text) { $('#overlay-text').textContent = text; $('#overlay').hidden = false; }
   function hideOverlay() { $('#overlay').hidden = true; lockedShown = false; }
+
+  // ------------------------------------------------------------------ 电脑是 Windows 还是 Mac
+  // 快捷键面板、⌘ 的映射、几处提示文字跟着变；Windows 电脑上一切和原来一样
+  function cmdAsCtrl() { return hostOS === 'mac' ? prefs.cmdAsCtrlMac : prefs.cmdAsCtrl; }
+  let appliedOS = null;
+  function applyHostOS(os) {
+    hostOS = os === 'mac' ? 'mac' : 'win';
+    if (hostOS === appliedOS) return;
+    appliedOS = hostOS;
+    $$('[data-host]').forEach((el) => { el.hidden = el.dataset.host !== hostOS; });
+    $$('[data-mac]').forEach((el) => {
+      if (el.dataset.win === undefined) el.dataset.win = el.textContent;
+      el.textContent = hostOS === 'mac' ? el.dataset.mac : el.dataset.win;
+    });
+    $('#opt-cmd').checked = cmdAsCtrl();
+  }
 
   // ------------------------------------------------------------------ 视图变换（缩放/平移）
   function toolbarClear() {
@@ -363,8 +381,8 @@
   function onKeyDown(e) {
     if (e.isComposing || e.keyCode === 229 || composing) return;
     if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
-    const ctrl = e.ctrlKey || (prefs.cmdAsCtrl && e.metaKey);
-    const win = e.metaKey && !prefs.cmdAsCtrl;
+    const ctrl = e.ctrlKey || (cmdAsCtrl() && e.metaKey);
+    const win = e.metaKey && !cmdAsCtrl(); // MetaLeft：Windows 上是 Win 键，Mac 上是 ⌘
     const special = SPECIAL.has(e.key) || /^F\d{1,2}$/.test(e.key) || e.key in KEY_CODE;
     if (!ctrl && !e.altKey && !win && !special) return; // 普通字符交给 input 事件（支持中文输入法）
     e.preventDefault();
@@ -425,6 +443,7 @@
   function onHello(m) {
     const changed = !geom || geom.sw !== m.geom.sw || geom.sh !== m.geom.sh;
     geom = m.geom; monitors = m.monitors || [];
+    applyHostOS(m.os);
     if (changed) { canvas.width = geom.sw; canvas.height = geom.sh; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, geom.sw, geom.sh); }
     document.title = '远程桌面 · ' + (m.host || '');
     setPrivacy(m.privacy);
@@ -473,9 +492,13 @@
           if (navigator.clipboard && window.isSecureContext && m.text) navigator.clipboard.writeText(m.text).then(() => toast('已复制到 iPad 剪贴板'), () => toast('已读取，可在框里长按复制'));
           else toast(m.text ? '已读取，可在框里长按复制' : '电脑剪贴板是空的');
           break;
-        case 'toast': toast(m.msg); break;
+        case 'toast': toast(m.msg, m.ms || 2600); break;
         case 'privacy': setPrivacy(m.on); if (m.msg) toast(m.msg, 3500); break;
-        case 'locked': lockedShown = true; showOverlay('电脑当前处于锁屏或系统安全界面（例如管理员权限弹窗），暂时看不到画面'); break;
+        case 'locked':
+          lockedShown = true;
+          showOverlay(hostOS === 'mac' ? 'Mac 已锁屏，暂时看不到画面（需要有人在这台 Mac 前用登录密码解锁）'
+            : '电脑当前处于锁屏或系统安全界面（例如管理员权限弹窗），暂时看不到画面');
+          break;
       }
     };
     sock.onclose = () => {
@@ -540,7 +563,7 @@
   async function boot() {
     try {
       const r = await fetch('/api/me', { cache: 'no-store', credentials: 'same-origin' });
-      if (r.ok) startApp(); else showLogin();
+      if (r.ok) { applyHostOS((await r.json().catch(() => ({}))).os); startApp(); } else showLogin();
     } catch (e) {
       showOverlay('连不上电脑，3 秒后重试…');
       setTimeout(boot, 3000);
@@ -622,6 +645,7 @@
     }
     if (b.dataset.code) { pressCombo([b.dataset.code]); return; }
     if (b.dataset.combo) { pressCombo(b.dataset.combo.split('+')); return; }
+    if (b.dataset.launch) { send({ t: 'launch', app: b.dataset.launch }); return; }
     if (b.dataset.act === 'rightclick') click(2);
     else if (b.dataset.act === 'middleclick') click(1);
     else if (b.dataset.act === 'dblclick') click(0, 2);
@@ -678,7 +702,7 @@
     $('#v-scale').textContent = geom ? `${geom.sw}×${geom.sh}` : '';
     $('#v-fps').textContent = s.fps + ' fps';
     $('#speed').value = prefs.speed; $('#v-speed').textContent = (+prefs.speed).toFixed(1) + 'x';
-    $('#opt-hud').checked = prefs.hud; $('#opt-cmd').checked = prefs.cmdAsCtrl;
+    $('#opt-hud').checked = prefs.hud; $('#opt-cmd').checked = cmdAsCtrl();
     hud.hidden = !prefs.hud;
     const fm = $('#field-monitor'); fm.hidden = monitors.length < 2;
     if (monitors.length >= 2) {
@@ -702,7 +726,10 @@
   $('#quality').addEventListener('change', (e) => pushStream({ quality: +e.target.value }));
   $('#speed').addEventListener('input', (e) => { prefs.speed = +e.target.value; store.set('speed', prefs.speed); $('#v-speed').textContent = prefs.speed.toFixed(1) + 'x'; });
   $('#opt-hud').addEventListener('change', (e) => { prefs.hud = e.target.checked; store.set('hud', prefs.hud); hud.hidden = !prefs.hud; });
-  $('#opt-cmd').addEventListener('change', (e) => { prefs.cmdAsCtrl = e.target.checked; store.set('cmdAsCtrl', prefs.cmdAsCtrl); });
+  $('#opt-cmd').addEventListener('change', (e) => {
+    const k = hostOS === 'mac' ? 'cmdAsCtrlMac' : 'cmdAsCtrl';
+    prefs[k] = e.target.checked; store.set(k, prefs[k]);
+  });
   $('#btn-refresh').onclick = () => { send({ t: 'refresh' }); closeDialogs(); };
   $('#btn-release').onclick = () => { sticky.clear(); stickyUI(); send({ t: 'release' }); toast('已松开所有按键'); };
   $('#btn-logout').onclick = async () => {

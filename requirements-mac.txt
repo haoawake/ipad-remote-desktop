@@ -1,0 +1,9 @@
+# macOS 版的依赖（Windows 用 requirements.txt）。打包好的 .app 里已经带了这些，只有从源码运行才需要装：
+#     python3 -m pip install -r requirements-mac.txt
+#     python3 app/mac_main.py
+aiohttp>=3.9
+numpy>=1.24
+pillow>=10.0
+pyobjc-core>=10.3
+pyobjc-framework-Cocoa>=10.3
+pyobjc-framework-Quartz>=10.3

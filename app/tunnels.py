@@ -3,34 +3,67 @@
    无需改防火墙，也无需管理员权限。
 2. Cloudflare 临时隧道（备用通道）：不需要账号，iPad 不装任何 App 也能用 https 访问；
    缺点是每次重启地址会变，所以变了就通过 ntfy 推送到手机/iPad。
+
+Windows 和 macOS 的差别只在“去哪找 Tailscale、怎么把它的界面程序拉起来、下载哪个 cloudflared”。
 """
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
+import shutil
 import socket
 import subprocess
+import sys
+import tarfile
 import time
-import winreg
+import urllib.request
 from pathlib import Path
 
 import aiohttp
 from aiohttp.abc import AbstractResolver
 
-import winapi
+MAC = sys.platform == "darwin"
+if MAC:
+    import macapi as osapi
+else:
+    import winreg
+
+    import winapi as osapi
 
 log = logging.getLogger("rd.tunnel")
 NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
+SPAWN = {} if MAC else {"creationflags": NO_WINDOW}  # macOS 的 subprocess 不认 creationflags
 
-TS_DIR = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tailscale"
-TS_CLI = TS_DIR / "tailscale.exe"
-TS_GUI = TS_DIR / "tailscale-ipn.exe"
+
+def _mac_tailscale():
+    """返回 (命令行程序, 界面程序 .app)。
+
+    Mac 上 Tailscale 有三种装法：App Store 版、官网独立版（都是 /Applications/Tailscale.app，
+    命令行就是 .app 里的那个可执行文件），以及 Homebrew 的开源版（只有 tailscale 命令、没有界面）。
+    """
+    apps = [Path("/Applications/Tailscale.app"), Path.home() / "Applications" / "Tailscale.app"]
+    app = next((a for a in apps if a.exists()), None)
+    clis = [Path("/usr/local/bin/tailscale"), Path("/opt/homebrew/bin/tailscale")]
+    if app:
+        clis.insert(0, app / "Contents" / "MacOS" / "Tailscale")
+    cli = next((c for c in clis if c.exists()), None)
+    return cli, app
+
+
+if MAC:
+    TS_CLI, TS_GUI = _mac_tailscale()
+    TS_CLI = TS_CLI or Path("/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+else:
+    TS_DIR = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tailscale"
+    TS_CLI = TS_DIR / "tailscale.exe"
+    TS_GUI = TS_DIR / "tailscale-ipn.exe"
 
 
 async def run_cmd(*args, timeout=20):
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
-                                                stderr=asyncio.subprocess.PIPE, creationflags=NO_WINDOW)
+                                                stderr=asyncio.subprocess.PIPE, **SPAWN)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:
@@ -40,6 +73,9 @@ async def run_cmd(*args, timeout=20):
 
 
 def system_proxy():
+    if MAC:  # 系统设置里的代理（标准库会去读 SystemConfiguration）
+        p = urllib.request.getproxies()
+        return p.get("https") or p.get("http")
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                             r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as k:
@@ -66,7 +102,14 @@ class Tailscale:
 
     @property
     def available(self):
+        global TS_CLI, TS_GUI
+        if MAC:  # 每次现找：程序开着的时候才装上 Tailscale 也能认出来
+            cli, TS_GUI = _mac_tailscale()
+            TS_CLI = cli or TS_CLI
         return TS_CLI.exists()
+
+    def _gui_exists(self):
+        return bool(TS_GUI) and TS_GUI.exists()
 
     async def status(self):
         code, out, _ = await run_cmd(str(TS_CLI), "status", "--json")
@@ -78,9 +121,18 @@ class Tailscale:
             return None
 
     def _gui_running(self):
+        if MAC:
+            return subprocess.run(["/usr/bin/pgrep", "-x", "Tailscale"], capture_output=True).returncode == 0
         out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq tailscale-ipn.exe", "/NH"],
                              capture_output=True, text=True, creationflags=NO_WINDOW).stdout
         return "tailscale-ipn.exe" in out.lower()
+
+    @staticmethod
+    def _start_gui():
+        if MAC:  # -g：在后台打开，不抢走当前窗口的焦点
+            subprocess.Popen(["/usr/bin/open", "-g", str(TS_GUI)])
+        else:
+            subprocess.Popen([str(TS_GUI)], creationflags=NO_WINDOW)
 
     async def ensure_serve(self):
         # 用 TCP 转发而不是 --http：--http 按 Host 头路由，用 IP 访问会 404；TCP 转发两种都行
@@ -106,7 +158,10 @@ class Tailscale:
         if not self.available:
             self.state = "未安装"
             self.on_change()
-            return
+            while not self.available:  # 装好以后自动接上，不用重启本程序
+                await asyncio.sleep(60)
+            self.state = "检查中"
+            self.on_change()
         started_gui_at = 0
         while True:
             try:
@@ -114,9 +169,10 @@ class Tailscale:
                 backend = (st or {}).get("BackendState", "?")
                 if backend != "Running":
                     # Windows 上 tailscaled 要等托盘程序连上才会启动；托盘没开就帮它开
-                    if not self._gui_running() and time.time() - started_gui_at > 60 and TS_GUI.exists():
+                    # （Mac 的 App Store 版/独立版同理：菜单栏里的 Tailscale 没开，通道就是断的）
+                    if not self._gui_running() and time.time() - started_gui_at > 60 and self._gui_exists():
                         log.info("Tailscale 未运行(%s)，启动托盘程序", backend)
-                        subprocess.Popen([str(TS_GUI)], creationflags=NO_WINDOW)
+                        self._start_gui()
                         started_gui_at = time.time()
                     new = ("需要登录" if backend == "NeedsLogin" else "未连接(%s)" % backend), None, None, False
                 else:
@@ -171,16 +227,46 @@ class DohResolver(AbstractResolver):
 
 
 CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+CLOUDFLARED_NAME = "cloudflared" if MAC else "cloudflared.exe"
+# macOS 官方只发 .tgz（里面一个 cloudflared）。钉死版本并校验 SHA256：下载的是要直接执行的程序，
+# 不能让“latest”换成什么就跑什么。这个版本哪天被 Cloudflare 撤掉了（404），才退回 latest。
+CLOUDFLARED_MAC = [
+    ("https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/cloudflared-darwin-arm64.tgz",
+     "a2f79ff7b9420aa537d74af239f376da170bbabeb529aec416002adac6a72e70"),
+    ("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz", None),
+]
+
+
+def _unpack_mac(tgz, dest):
+    """从 .tgz 里只取出 cloudflared 这一个文件（不照搬压缩包里的路径）。"""
+    with tarfile.open(tgz, "r:gz") as t:
+        m = next((m for m in t.getmembers() if m.isfile() and os.path.basename(m.name) == "cloudflared"), None)
+        if m is None:
+            raise OSError("压缩包里没有 cloudflared")
+        out = dest.with_suffix(".unpack")
+        with t.extractfile(m) as src, open(out, "wb") as f:
+            shutil.copyfileobj(src, f)
+    os.chmod(out, 0o755)
+    return out
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 async def download_cloudflared(dest):
     """仓库里不带 50MB 的 exe，第一次运行时自动从 Cloudflare 官方 GitHub Release 下载。"""
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".download")
-    for proxy in (None, system_proxy()):
+    sources = CLOUDFLARED_MAC if MAC else [(CLOUDFLARED_URL, None)]
+    for (url, sha), proxy in [(src, p) for src in sources for p in (None, system_proxy())]:
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=900)) as s:
-                async with s.get(CLOUDFLARED_URL, proxy=proxy) as r:
+                async with s.get(url, proxy=proxy) as r:
                     if r.status != 200:
                         raise OSError("HTTP %d" % r.status)
                     with open(tmp, "wb") as f:
@@ -188,7 +274,14 @@ async def download_cloudflared(dest):
                             f.write(chunk)
             if tmp.stat().st_size < 10 << 20:
                 raise OSError("下载的文件不完整")
-            os.replace(tmp, dest)
+            if sha and _sha256(tmp) != sha:
+                raise OSError("SHA256 校验不通过")
+            if MAC:
+                unpacked = _unpack_mac(tmp, dest)
+                tmp.unlink()
+                os.replace(unpacked, dest)
+            else:
+                os.replace(tmp, dest)
             log.info("cloudflared 下载完成：%s", dest)
             return True
         except Exception as e:
@@ -265,8 +358,8 @@ class CloudflareQuick:
             try:
                 self.proc = await asyncio.create_subprocess_exec(
                     str(self.exe), "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:%d" % self.port,
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, creationflags=NO_WINDOW)
-                winapi.bind_child(self.proc.pid)
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, **SPAWN)
+                osapi.bind_child(self.proc.pid)
                 readers = [asyncio.create_task(self._read(self.proc.stdout)),
                            asyncio.create_task(self._read(self.proc.stderr))]
                 health = asyncio.create_task(self._health())

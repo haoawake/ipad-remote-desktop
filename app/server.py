@@ -8,7 +8,6 @@ import logging
 import os
 import re
 import secrets
-import socket
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -16,12 +15,15 @@ from urllib.parse import urlparse
 from aiohttp import WSMsgType, web
 
 import capture
-import privacy
-import winapi
+from common import DATA, MAC, WEB
 
-ROOT = Path(__file__).resolve().parent.parent
-WEB = ROOT / "web"
-DATA = ROOT / "data"
+if MAC:
+    import macapi as osapi
+    import privacy_mac as privacy
+else:
+    import privacy
+    import winapi as osapi
+
 log = logging.getLogger("rd")
 
 COOKIE = "rd_session"
@@ -135,7 +137,7 @@ class Session:
     async def send_hello(self):
         await self.send_json({"t": "hello", "geom": self.geom, "fps": self.fps,
                               "quality": self.enc.quality, "monitors": self.app["monitors"],
-                              "host": socket.gethostname(), "privacy": privacy_state(self.app)})
+                              "host": osapi.host_name(), "os": osapi.OS, "privacy": privacy_state(self.app)})
 
     def apply_settings(self, m):
         cfg = {}
@@ -206,24 +208,24 @@ class Session:
         last_h = None
         loop = asyncio.get_running_loop()
         while self.alive and not self.ws.closed:
-            vis, x, y, h = winapi.cursor_info()
+            vis, x, y, h = osapi.cursor_info()
             g = self.geom
             if g:
-                pos = (vis, x - g["left"], y - g["top"])
+                lx, ly = osapi.to_local(g, x, y)
+                pos = (vis, round(lx), round(ly))
                 if pos != last:
                     last = pos
                     await self.send_json({"t": "c", "v": vis, "x": pos[1], "y": pos[2]})
                 if h != last_h:
                     last_h = h
-                    shape = await loop.run_in_executor(None, winapi.cursor_shape, h)
+                    shape = await loop.run_in_executor(None, osapi.cursor_shape, h)
                     if shape:
                         await self.send_json(dict(t="cs", **shape))
             await asyncio.sleep(0.025)
 
     # ---- 输入
     def to_screen(self, m):
-        g = self.geom
-        return g["left"] + float(m["x"]), g["top"] + float(m["y"])
+        return osapi.to_global(self.geom, float(m["x"]), float(m["y"]))
 
     async def handle(self, m):
         t = m.get("t")
@@ -237,7 +239,7 @@ class Session:
         self.last_input = asyncio.get_running_loop().time()
         self.wake.set()
         if t == "mm":
-            winapi.move_to(*self.to_screen(m))
+            osapi.move_to(*self.to_screen(m))
         elif t == "mr":
             self.frac[0] += float(m["dx"])
             self.frac[1] += float(m["dy"])
@@ -245,46 +247,48 @@ class Session:
             self.frac[0] -= ix
             self.frac[1] -= iy
             if ix or iy:
-                winapi.move_rel(ix, iy)
+                osapi.move_rel(ix, iy)
         elif t == "mb":
             if "x" in m:
-                winapi.move_to(*self.to_screen(m))
-            winapi.button(m.get("b", 0), bool(m.get("d")))
+                osapi.move_to(*self.to_screen(m))
+            osapi.button(m.get("b", 0), bool(m.get("d")))
         elif t == "click":
             if "x" in m:
-                winapi.move_to(*self.to_screen(m))
-            winapi.click(m.get("b", 0), m.get("n", 1))
+                osapi.move_to(*self.to_screen(m))
+            osapi.click(m.get("b", 0), m.get("n", 1))
         elif t == "wh":
-            winapi.wheel(int(m.get("dx", 0)), int(m.get("dy", 0)))
+            osapi.wheel(int(m.get("dx", 0)), int(m.get("dy", 0)))
         elif t == "key":
-            winapi.key(str(m.get("code")), bool(m.get("d")))
+            osapi.key(str(m.get("code")), bool(m.get("d")))
         elif t == "combo":
-            winapi.combo([str(c) for c in m.get("codes", [])][:6])
+            osapi.combo([str(c) for c in m.get("codes", [])][:6])
         elif t == "text":
-            winapi.type_text(str(m.get("s", ""))[:5000])
+            osapi.type_text(str(m.get("s", ""))[:5000])
         elif t == "release":
-            winapi.release_modifiers()
+            osapi.release_modifiers()
         elif t == "settings":
             self.apply_settings(m)
         elif t == "refresh":
             self.enc.force_full = True
         elif t == "clip_get":
-            text = await asyncio.get_running_loop().run_in_executor(None, winapi.clipboard_get)
+            text = await asyncio.get_running_loop().run_in_executor(None, osapi.clipboard_get)
             await self.send_json({"t": "clip", "text": text or ""})
         elif t == "clip_set":
-            ok = await asyncio.get_running_loop().run_in_executor(None, winapi.clipboard_set, str(m.get("text", "")))
+            ok = await asyncio.get_running_loop().run_in_executor(None, osapi.clipboard_set, str(m.get("text", "")))
             await self.send_json({"t": "toast", "msg": "已写入电脑剪贴板" if ok else "写入剪贴板失败"})
         elif t == "open":
             await self.send_json({"t": "toast", "msg": open_url(str(m.get("url", "")))})
         elif t == "privacy":
             await set_privacy(self.app, bool(m.get("on")), announce=True)
+        elif t == "launch" and hasattr(osapi, "launch_app"):  # 只有 macOS 端的快捷键面板会发
+            await self.send_json({"t": "toast", "msg": osapi.launch_app(str(m.get("app", "")))})
 
     async def close(self):
         self.alive = False
         self.ack_event.set()
         self.wake.set()
         try:
-            winapi.release_modifiers()
+            osapi.release_modifiers()
         except Exception:
             pass
         await self.run_ex(self.enc.close)
@@ -292,7 +296,8 @@ class Session:
 
 
 # ====================================================================== 隐私屏
-PRIVACY_GRACE = 120  # 断开后 2 分钟内仍算“远程在用”（Safari 切到后台会断开，回来会重连）
+# 断开后 2 分钟内仍算“远程在用”（Safari 切到后台会断开，回来会重连）。RD_PRIVACY_GRACE 只给自动化测试用
+PRIVACY_GRACE = float(os.environ.get("RD_PRIVACY_GRACE") or 120)
 
 
 def remote_active(app):
@@ -327,12 +332,16 @@ def open_url(url):
     url = url.strip()
     if not url:
         return "网址为空"
+    # 带了别的协议（javascript:、file:、mailto: …）直接拒绝；“域名:端口”（bilibili.com:443）不算协议
+    m = re.match(r"^([a-zA-Z][a-zA-Z0-9+.-]*):(?!\d+(?:[/?#]|$))", url)
+    if m and m.group(1).lower() not in ("http", "https"):
+        return "只支持 http/https 网址"
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
         url = "https://" + url
     if urlparse(url).scheme.lower() not in ("http", "https"):
         return "只支持 http/https 网址"
     try:
-        os.startfile(url)
+        osapi.open_url(url)
         log.info("打开网址 %s", url)
         return "已在电脑上打开：" + url
     except Exception as e:
@@ -356,7 +365,7 @@ async def health(request):
 async def api_me(request):
     if not request.app["auth"].check(request):
         return web.json_response({"ok": False}, status=401)
-    return web.json_response({"ok": True, "host": socket.gethostname()})
+    return web.json_response({"ok": True, "host": osapi.host_name(), "os": osapi.OS})
 
 
 async def api_login(request):
@@ -435,6 +444,8 @@ async def ws_handler(request):
     log.info("远程会话开始 ip=%s", client_ip(request))
     if request.query.get("privacy") in ("0", "1"):  # iPad 端记住的偏好（默认开）
         await set_privacy(app, request.query["privacy"] == "1")
+    for warn in getattr(osapi, "permission_warnings", list)():  # macOS：还没授权屏幕录制/辅助功能
+        await sess.send_json({"t": "toast", "msg": warn, "ms": 9000})
     tasks = [asyncio.create_task(sess.stream()), asyncio.create_task(sess.cursor_loop())]
     try:
         async for msg in ws:
@@ -468,18 +479,28 @@ async def lock_watch(app):
     while True:
         was = app["locked"]
         try:
-            app["locked"] = winapi.is_session_locked()
+            app["locked"] = osapi.is_session_locked()
         except Exception:
             app["locked"] = False
-        # 有人在电脑前用 Windows 密码/PIN 解了锁 → 一定是主人，撤掉隐私屏
+        # 有人在电脑前用 Windows 密码/PIN（Mac 登录密码）解了锁 → 一定是主人，撤掉隐私屏
         if was and not app["locked"] and privacy_state(app):
-            log.info("本地用 Windows 密码解锁，隐私屏自动关闭")
-            await set_privacy(app, False, reason="有人在电脑上用 Windows 密码解锁了，隐私屏已自动关闭")
+            who = "Mac 登录密码" if MAC else "Windows 密码"
+            log.info("本地用 %s解锁，隐私屏自动关闭", who)
+            await set_privacy(app, False, reason="有人在电脑上用 %s解锁了，隐私屏已自动关闭" % who)
         await asyncio.sleep(1)
 
 
 async def on_startup(app):
     app["lock_task"] = asyncio.create_task(lock_watch(app))
+    c = app.get("privacy")
+    if c and hasattr(c, "set_listener"):
+        # macOS：隐私屏由状态窗口进程托管，它自己撤掉时（比如 Mac 解锁了）要告诉所有 iPad
+        loop = asyncio.get_running_loop()
+
+        def changed(on, reason):
+            msg = {"t": "privacy", "on": on, "msg": reason}
+            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(broadcast(app, msg)))
+        c.set_listener(changed)
 
 
 def make_app(config):
