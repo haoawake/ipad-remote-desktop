@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -32,12 +32,52 @@ jobs:
           xcodebuild -project ios/iPadRemote.xcodeproj -scheme iPadRemote \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -configuration Debug CODE_SIGNING_ALLOWED=NO build
+      - name: Build arm64 iPad device IPA (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/iPadRemote.xcodeproj -scheme iPadRemote \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -configuration Release CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath "$PWD/build-device" build
+          mkdir -p dist/Payload
+          cp -R build-device/Build/Products/Release-iphoneos/iPadRemote.app dist/Payload/
+          (cd dist && zip -q -r -X iPadRemote-iPadOS-unsigned.ipa Payload)
+          rm -rf dist/Payload
+
       - name: Package Xcode project for personal signing
         run: |
-          mkdir -p dist
           ditto -c -k --keepParent ios dist/iPadRemote-Native-Xcode-Project.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: iPadRemote-Native-Xcode-Project
-          path: dist/iPadRemote-Native-Xcode-Project.zip
+          name: iPadRemote-iPadOS
+          path: |
+            dist/iPadRemote-Native-Xcode-Project.zip
+            dist/iPadRemote-iPadOS-unsigned.ipa
           if-no-files-found: error
+
+      - name: Publish iPad beta release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="ipad-v0.1.0"
+          cat > /tmp/notes.md <<'NOTES'
+          iPad 远程桌面原生 UIKit 客户端测试版，不使用 WKWebView。
+          
+          - 实体键盘自动获取焦点，处理 key down/up，支持 Windows/Mac 的远程组合键。
+          - 显示远程桌面、手指/触控板操作、快捷键面板、中文输入。
+          - `iPadRemote-iPadOS-unsigned.ipa` **未签名**，不是可直接点开的安装包。Windows/macOS 可通过 Sideloadly 使用自己的 Apple ID 签名安装（免费账号通常 7 天需重新签名）。
+          - `iPadRemote-Native-Xcode-Project.zip` 可在 Mac 上打开 Xcode 自行签名编译。
+          - iPadOS 保留的 ⌘Tab 等快捷键无法由第三方应用劫持；需要使用 App 内快捷键面板。
+          
+          安装与注意事项请见仓库 ios/README.md。
+          NOTES
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes-file /tmp/notes.md --prerelease
+            gh release upload "$tag" dist/iPadRemote-iPadOS-unsigned.ipa dist/iPadRemote-Native-Xcode-Project.zip --clobber
+          else
+            gh release create "$tag" dist/iPadRemote-iPadOS-unsigned.ipa dist/iPadRemote-Native-Xcode-Project.zip \
+              --target "$GITHUB_SHA" --title "iPad 原生客户端 v0.1.0 Beta（未签名）" \
+              --notes-file /tmp/notes.md --prerelease
+          fi
