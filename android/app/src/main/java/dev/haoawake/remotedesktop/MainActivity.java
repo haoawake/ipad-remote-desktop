@@ -33,7 +33,6 @@ public final class MainActivity extends Activity implements RemoteClient.Listene
 
     private RemoteClient remote;
     private FrameLayout root;
-    private LinearLayout loginPane;
     private FrameLayout sessionPane;
     private RemoteSurface screen;
     private EditText addressInput, passwordInput;
@@ -283,8 +282,7 @@ public final class MainActivity extends Activity implements RemoteClient.Listene
             else if (message != null && message.contains("锁屏"))
                 Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         } else if (!isFinishing()) {
-            if (loginPane == null || root.findViewById(android.R.id.content) == null ||
-                    (screen != null && screen.getParent() != null)) {
+            if (screen != null && screen.getParent() != null) {
                 showLogin();
                 sessionPane = null;
                 screen = null;
