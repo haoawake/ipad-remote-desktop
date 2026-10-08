@@ -1,5 +1,13 @@
 # 更新记录
 
+## Android v0.1.0 Beta
+
+- 新增 **Android 手机 / 平板原生客户端**，基于 Android View 和 OkHttp WebSocket，无 WebView，复用 Windows / Mac 服务端的登录、JPEG 分块视频流和输入协议。
+- 支持触摸拖动、双指滚动/缩放、外接鼠标、USB/蓝牙实体键盘、常用系统快捷键面板及中文输入。
+- GitHub Actions 在 Ubuntu 下自动编译带调试签名的免费 APK，并发布到独立的 Android Beta Release；不需要 Play 商店或付费开发者账号。
+- 注意 Android 保留的 Home / 最近任务等系统键无法全部拦截，Beta APK 的调试签名更新时可能需要卸载旧版。
+
+
 ## v1.1.1
 
 - **外接键盘直连**：iPad 连接后默认聚焦远程画面；触摸或鼠标点击画面自动恢复焦点，免点顶部「键盘」也能输入文字和使用可被 Safari 转交网页的快捷键。
