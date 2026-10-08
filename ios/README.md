@@ -13,6 +13,16 @@
 
 **无法实现的范围：** Apple 在 iPadOS 保留的系统快捷键（例如 ⌘Tab、⌘空格、多任务手势）第三方原生 App 也无法完全拦截，不能保证“所有键无例外自动属于远程电脑”；请使用快捷键面板模拟这些组合键。远程 Windows 的 Ctrl+Alt+Del 安全桌面也不能靠普通 SendInput 注入。
 
+## Windows 用户：免 Mac 安装
+
+1. 到 [iPad 原生客户端 Beta Release](https://github.com/haoawake/ipad-remote-desktop/releases/tag/ipad-v0.1.0) 下载 `iPadRemote-iPadOS-unsigned.ipa`。这是 **未签名 IPA**，不能直接在 iPad「文件」中安装。
+2. 在 Windows 上安装 [Sideloadly（官方）](https://sideloadly.io/)；根据官方要求安装 Apple 官网版本的 iTunes / iCloud。
+3. 用 USB 将 iPad 连到 Windows，解锁并在设备上选择「信任此电脑」。打开 Sideloadly，载入这个 IPA，选择自己的 iPad，使用自己的 Apple ID 完成签名与安装（不需要把 Apple ID 发给本项目）。
+4. 首次安装后按系统提示到 iPad「设置 → 通用 → VPN 与设备管理」信任开发者；新版本系统可能还需在「隐私与安全性」开启开发者模式。
+5. 免费 Apple ID 的个人签名通常 **7 天到期**；届时用 Sideloadly 重新签名安装或配置其刷新功能。
+
+**提醒：** Sideloadly 是第三方工具，安装与 Apple ID 签名由你自己在本机完成。本项目不提供签名证书或 App Store / TestFlight 分发。原生 App 是首次 Beta，已经配置 CI 编译，但真实 iPad 的键盘及网络仍需你安装后实测。
+
 ## 编译并安装到自己的 iPad
 
 1. 需要一台 **Mac**、最新可用的 Xcode，以及 [XcodeGen](https://github.com/yonaskolb/XcodeGen)（可用 `brew install xcodegen`）。
@@ -21,7 +31,7 @@
 4. 通过 USB 或 Wi-Fi 在 Xcode 选择自己的 iPad，点击 Run 即可安装。免费个人 Apple Account 可能有签名有效期限制。
 5. 电脑端运行原来的 Windows/Mac 服务，iPad 安装 Tailscale（或走 HTTPS 隧道），打开 App 输入远程地址及密码。
 
-仓库的 `ios-native.yml` 会通过 GitHub Actions 自动生成 Xcode 项目，在 iOS Simulator SDK 下构建验证，并上传**未签名的 Xcode 项目源码 ZIP**。它不是可直接在 iPad 上点击安装的签名 IPA；如需免 Xcode 安装，必须另外完成开发者签名及分发。
+仓库的 `ios-native.yml` 会通过 GitHub Actions 自动生成 Xcode 项目，在 iOS Simulator SDK 下构建验证，并上传**未签名 iPad 设备 IPA**和可自行编译的 Xcode 项目 ZIP；Beta Release 也包含这两份附件。未签名 IPA 需要 Sideloadly 或 Xcode 配合你的 Apple ID 签名，不是 App Store 安装包。
 
 ## 网络安全
 
