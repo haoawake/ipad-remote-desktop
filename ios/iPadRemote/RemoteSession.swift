@@ -110,7 +110,14 @@ final class RemoteSession: ObservableObject {
                 URLQueryItem(name: "quality", value: "70"),
                 URLQueryItem(name: "fps", value: "30")
             ]
-            let task = http.webSocketTask(with: components.url!)
+            // The desktop server authenticates the WebSocket with the same
+            // HttpOnly session cookie as /api/me. Make it explicit for iOS.
+            var request = URLRequest(url: components.url!)
+            if let cookies = http.configuration.httpCookieStorage?.cookies(for: base),
+               let cookieHeader = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] {
+                request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+            }
+            let task = http.webSocketTask(with: request)
             socket = task
             task.resume()
             reader = Task { await receive(task, tag: tag) }
