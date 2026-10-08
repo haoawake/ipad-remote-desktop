@@ -75,12 +75,23 @@ jobs:
 
           Android 系统保留的 Home / 最近任务等按键不能被普通第三方 App 全面接管。详见 android/README.md。
           NOTES
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "Android 原生远程桌面 v0.1.0 Beta" --notes-file /tmp/notes.md --prerelease
-            gh release upload "$tag" dist/iPad-Remote-Desktop-Android-v0.1.0.apk dist/SHA256SUMS-android.txt --clobber
-          else
-            gh release create "$tag" dist/iPad-Remote-Desktop-Android-v0.1.0.apk dist/SHA256SUMS-android.txt \
+          # GitHub Releases API can occasionally return 500. Retry safely:
+          # if a create partially succeeds, the next attempt edits and uploads.
+          for attempt in 1 2 3 4 5 6; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              if gh release edit "$tag" --title "Android 原生远程桌面 v0.1.0 Beta" --notes-file /tmp/notes.md --prerelease &&
+                 gh release upload "$tag" dist/iPad-Remote-Desktop-Android-v0.1.0.apk dist/SHA256SUMS-android.txt --clobber; then
+                break
+              fi
+            elif gh release create "$tag" dist/iPad-Remote-Desktop-Android-v0.1.0.apk dist/SHA256SUMS-android.txt \
               --target "$GITHUB_SHA" --title "Android 原生远程桌面 v0.1.0 Beta" \
-              --notes-file /tmp/notes.md --prerelease
-          fi
+              --notes-file /tmp/notes.md --prerelease; then
+              break
+            fi
+            if [ "$attempt" -eq 6 ]; then
+              echo "::error::GitHub Releases API failed after retries"
+              exit 1
+            fi
+            sleep $((attempt * 8))
+          done
           gh release view "$tag" --json assets --jq '.assets[].name'
