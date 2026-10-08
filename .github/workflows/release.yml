@@ -41,7 +41,9 @@ jobs:
           python-version: '3.13'
 
       - name: check
-        run: python -m compileall -q app scripts
+        run: |
+          python -m compileall -q app scripts
+          node --check web/app.js
 
       - name: build
         run: |
@@ -75,6 +77,9 @@ jobs:
 
       - name: deps
         run: bash scripts/mac_deps.sh
+
+      - name: JavaScript syntax check
+        run: node --check web/app.js
 
       - name: unit tests
         run: python -m unittest discover -s tests -v
@@ -125,7 +130,7 @@ jobs:
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
           if [ "$GITHUB_REF_TYPE" != tag ]; then tag="$(tr -d '[:space:]' < .github/release-request.txt)"; fi
-          [[ "$tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           mkdir rel
           find dl -name '*.zip' -exec cp {} rel/ \;
           ls -la rel
