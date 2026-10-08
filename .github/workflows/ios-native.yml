@@ -1,0 +1,43 @@
+name: iPad native app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-native.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build native iPadOS project
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          cd ios
+          xcodegen generate
+      - name: Build iPad app for simulator (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/iPadRemote.xcodeproj -scheme iPadRemote \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug CODE_SIGNING_ALLOWED=NO build
+      - name: Package Xcode project for personal signing
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent ios dist/iPadRemote-Native-Xcode-Project.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPadRemote-Native-Xcode-Project
+          path: dist/iPadRemote-Native-Xcode-Project.zip
+          if-no-files-found: error
