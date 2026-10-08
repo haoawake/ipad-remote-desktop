@@ -1,0 +1,82 @@
+name: Android native app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build installable Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile Java Android app and build signed debug APK
+        run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/iPad-Remote-Desktop-Android-v0.1.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/iPad-Remote-Desktop-Android-v0.1.0.apk | head -n 8
+          sha256sum dist/iPad-Remote-Desktop-Android-v0.1.0.apk > dist/SHA256SUMS-android.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android-Remote-Desktop-APK
+          path: |
+            dist/iPad-Remote-Desktop-Android-v0.1.0.apk
+            dist/SHA256SUMS-android.txt
+          if-no-files-found: error
+
+      - name: Publish free Android beta APK
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="android-v0.1.0"
+          cat > /tmp/notes.md <<'NOTES'
+          # Android 原生远程桌面 v0.1.0 Beta
+
+          原生 Android 软件（非浏览器、非 WebView），兼容原有 Windows / Mac 远程桌面服务端。
+
+          - 连接后直接接收蓝牙/USB 实体键盘按键、Ctrl / Alt / Shift / Meta 组合键；
+          - Android 触控、双指滚动 / 缩放、外接鼠标、常用远程系统快捷键面板；
+          - 复用 Tailscale / Cloudflare 隧道、登录密码及分块 WebSocket 桌面传输。
+          - **免费 APK**：下载后在 Android 设备中允许该来源安装，即可安装；不需要 Play 商店或付费签名账户。
+
+          本版使用 CI 生成的**调试签名**，只用于个人测试。后续不同 CI 构建的签名可能变化，安装更新包时需卸载旧版再安装（原有本地地址设置会清除）。勿用于公开大规模分发；正式发布应换为自己的长期有效签名证书。
+
+          Android 系统保留的 Home / 最近任务等按键不能被普通第三方 App 全面接管。详见 android/README.md。
+          NOTES
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "Android 原生远程桌面 v0.1.0 Beta" --notes-file /tmp/notes.md --prerelease
+            gh release upload "$tag" dist/iPad-Remote-Desktop-Android-v0.1.0.apk dist/SHA256SUMS-android.txt --clobber
+          else
+            gh release create "$tag" dist/iPad-Remote-Desktop-Android-v0.1.0.apk dist/SHA256SUMS-android.txt \
+              --target "$GITHUB_SHA" --title "Android 原生远程桌面 v0.1.0 Beta" \
+              --notes-file /tmp/notes.md --prerelease
+          fi
+          gh release view "$tag" --json assets --jq '.assets[].name'
