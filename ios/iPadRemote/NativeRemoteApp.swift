@@ -39,9 +39,9 @@ struct HomeScreen: View {
                 .sheet(isPresented: $showShortcuts) {
                     NavigationStack {
                         List {
-                            ForEach(shortcuts, id: \.name) { item in
-                                Button(item.name) {
-                                    remote.send(["t": "combo", "codes": item.codes])
+                            ForEach(shortcuts.indices, id: \.self) { index in
+                                Button(shortcuts[index].name) {
+                                    remote.send(["t": "combo", "codes": shortcuts[index].codes])
                                     showShortcuts = false
                                 }
                             }
