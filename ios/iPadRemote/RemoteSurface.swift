@@ -309,10 +309,10 @@ private final class KeyboardCanvas: UIView {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    @objc func copy(_ sender: Any?) { keyboard?.command("c", modifiers: [.command]) }
-    @objc func cut(_ sender: Any?) { keyboard?.command("x", modifiers: [.command]) }
-    @objc func paste(_ sender: Any?) { keyboard?.command("v", modifiers: [.command]) }
-    @objc func selectAll(_ sender: Any?) { keyboard?.command("a", modifiers: [.command]) }
+    @objc override func copy(_ sender: Any?) { keyboard?.command("c", modifiers: [.command]) }
+    @objc override func cut(_ sender: Any?) { keyboard?.command("x", modifiers: [.command]) }
+    @objc override func paste(_ sender: Any?) { keyboard?.command("v", modifiers: [.command]) }
+    @objc override func selectAll(_ sender: Any?) { keyboard?.command("a", modifiers: [.command]) }
 
     @objc private func tapped(_ g: UITapGestureRecognizer) {
         activate()
