@@ -197,6 +197,10 @@ private final class KeyboardCanvas: UIView {
         picture.backgroundColor = .black
         picture.isUserInteractionEnabled = false
         addSubview(picture)
+        NotificationCenter.default.addObserver(self, selector: #selector(releaseOnBackground),
+                                               name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(refocusOnActive),
+                                               name: UIApplication.didBecomeActiveNotification, object: nil)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         let twice = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
@@ -227,6 +231,14 @@ private final class KeyboardCanvas: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+
+    @objc private func releaseOnBackground() {
+        keyboard?.release()
+    }
+
+    @objc private func refocusOnActive() {
+        if remote?.connected == true { _ = becomeFirstResponder() }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
