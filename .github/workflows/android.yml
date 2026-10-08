@@ -42,7 +42,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           cp android/app/build/outputs/apk/debug/app-debug.apk dist/iPad-Remote-Desktop-Android-v0.1.0.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/iPad-Remote-Desktop-Android-v0.1.0.apk | head -n 8
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/iPad-Remote-Desktop-Android-v0.1.0.apk > dist/apk-info.txt
+          head -n 8 dist/apk-info.txt
           sha256sum dist/iPad-Remote-Desktop-Android-v0.1.0.apk > dist/SHA256SUMS-android.txt
 
       - uses: actions/upload-artifact@v4

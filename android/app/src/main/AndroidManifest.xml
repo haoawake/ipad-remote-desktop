@@ -7,7 +7,7 @@
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:label="远程桌面"
-        android:icon="@android:drawable/ic_menu_view">
+        android:icon="@drawable/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"
