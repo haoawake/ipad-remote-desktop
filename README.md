@@ -2,7 +2,7 @@
 
 English | [中文](README.zh-CN.md)
 
-A self-hosted, browser-based remote desktop for controlling a Windows PC **or a Mac** from an iPad, including over cellular data. The iPad side is just a web page in Safari (add it to the Home Screen for a full-screen, app-like experience); the computer side is a small Python service (on the Mac, a native app).
+A self-hosted, browser-based remote desktop for controlling a Windows PC **or a Mac** from an iPad, including over cellular data. The iPad client can be either a **native iPadOS app (Beta)** or a Safari page; the host computer runs a small Python service (bundled in the Windows/Mac releases).
 
 - **Full-screen view and control**: mouse (trackpad or direct-touch modes), keyboard including Chinese IME, shortcut panel, clipboard, open URLs on the PC, upload files.
 - **NAT traversal without port forwarding**:
@@ -14,6 +14,8 @@ A self-hosted, browser-based remote desktop for controlling a Windows PC **or a 
 |---|---|
 | `iPad-Remote-Desktop-win-x64.zip` | Windows 10 2004+ / Windows 11 (64-bit), portable |
 | `iPad-Remote-Desktop-mac-arm64.zip` | Apple silicon Macs (M1 and later), macOS 11 or later — contains `iPad 远程桌面.app` |
+
+**Native iPad client:** [iPadOS Beta release](https://github.com/haoawake/ipad-remote-desktop/releases/tag/ipad-v0.1.0) provides an **unsigned IPA** and an Xcode project. On Windows, Sideloadly can sign/install the IPA using your Apple ID; on Mac, use Xcode. [Native app installation guide](ios/README.md). iPadOS-reserved shortcuts such as Command+Tab cannot be universally intercepted by any third-party app.
 
 ## How it works
 

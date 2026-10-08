@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-在外面用 iPad（手机流量也行）打开 Safari，就能看到并操控家里的电脑（**Windows 或 Mac**）的整个屏幕：点鼠标、打字（支持中文）、在电脑上开网址、传文件。iPad 端不用装任何专门的 App，就是一个网页。
+在外面用 iPad（手机流量也行）打开 Safari，就能看到并操控家里的电脑（**Windows 或 Mac**）的整个屏幕：点鼠标、打字（支持中文）、在电脑上开网址、传文件。iPad 端可以选择**全新原生 App**或传统 Safari 网页。
 
 - **主通道：Tailscale**。点对点直连，地址固定，全程 WireGuard 加密。电脑和 iPad 登录同一个 Tailscale 账号即可，不需要公网 IP，也不用设置路由器端口转发。
 - **备用通道：Cloudflare 临时隧道**。不需要账号，iPad 不装任何 App，任何网络都能用 https 打开。缺点是电脑每次重启后地址会变，新地址会自动推送到你专属的 ntfy 频道。
@@ -12,6 +12,8 @@
 |---|---|
 | `iPad-Remote-Desktop-win-x64.zip` | Windows 10 2004 及以上 / Windows 11（64 位） |
 | `iPad-Remote-Desktop-mac-arm64.zip` | Apple 芯片（M1 及以后）的 Mac，macOS 11 及以上 |
+
+**📱 原生 iPad App Beta：** [下载 iPadOS 客户端](https://github.com/haoawake/ipad-remote-desktop/releases/tag/ipad-v0.1.0)，提供未签名 IPA（Windows 使用 Sideloadly 配合自己的 Apple ID 签名安装）与 Xcode 工程。App 使用 UIKit 原生接管实体键盘事件，不是网页套壳。完整教程见 [iOS 安装说明](ios/README.md)。iPadOS 保留的 ⌘Tab 等快捷键仍需通过 App 内的快捷键面板发送。
 
 ---
 
