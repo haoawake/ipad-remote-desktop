@@ -223,6 +223,7 @@
 
   stage.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    focusRemoteSurface(); // touchstart is a user gesture; focus does not invoke the software keyboard
     if (!geom) return;
     stopInertia();
     const list = touchList(e), t = now();
@@ -324,7 +325,9 @@
   // ------------------------------------------------------------------ 外接鼠标 / 触控板
   const btnOf = (e) => (e.button === 2 ? 2 : e.button === 1 ? 1 : 0);
   stage.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'mouse' || !geom) return;
+    if (e.pointerType !== 'mouse') return;
+    focusRemoteSurface();
+    if (!geom) return;
     e.preventDefault();
     const r = stageToRemote(stagePt(e)); setLocalCursor(r); buttonDown(btnOf(e), r);
   });
@@ -346,6 +349,13 @@
   ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
 
   // ------------------------------------------------------------------ 键盘
+  // A focusable remote surface gives Safari a real keyboard event target
+  // without opening the iPad software keyboard.
+  function focusRemoteSurface() {
+    if (!appStarted || anyDialogOpen()) return;
+    if (document.activeElement === stage) return;
+    try { stage.focus({ preventScroll: true }); } catch (e) { stage.focus(); }
+  }
   const SENT = '​';
   let composing = false;
   function resetKbd() { kbd.value = SENT; try { kbd.setSelectionRange(1, 1); } catch (e) { /* ignore */ } }
@@ -397,12 +407,21 @@
     pressCombo(codes);
   }
   kbd.addEventListener('keydown', onKeyDown);
-  // 外接键盘：即使没点“键盘”按钮，也能直接打字
+  // Catch hardware-keyboard shortcuts in the capture phase, before Safari's
+  // focused canvas/remote surface has any opportunity to handle navigation.
+  // Form controls and toolbar buttons keep their normal local key behaviour.
   document.addEventListener('keydown', (e) => {
-    if (document.activeElement === kbd || !appStarted || anyDialogOpen()) return;
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); send({ t: 'text', s: e.key }); return; }
-    onKeyDown(e);
-  });
+    if (!appStarted || !ws || ws.readyState !== 1 || document.hidden || anyDialogOpen()) return;
+    if (e.target === kbd) return; // IME, deletion and composition use the textarea handlers above.
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, button, a, [contenteditable]')) return;
+    if (composing || e.isComposing || e.keyCode === 229 || e.key === 'Dead' || e.key === 'Process') return;
+    if (e.key.length === 1 && (!e.ctrlKey && !e.metaKey && !e.altKey || e.getModifierState?.('AltGraph'))) {
+      e.preventDefault();
+      send({ t: 'text', s: e.key });
+      return;
+    }
+    onKeyDown(e); // ⌘ on an iPad maps to Ctrl on Windows, Command on a Mac.
+  }, true);
   kbd.addEventListener('focus', () => { setBtn('keyboard', true); resetKbd(); });
   kbd.addEventListener('blur', () => setBtn('keyboard', false));
 
@@ -446,6 +465,7 @@
     applyHostOS(m.os);
     if (changed) { canvas.width = geom.sw; canvas.height = geom.sh; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, geom.sw, geom.sh); }
     document.title = '远程桌面 · ' + (m.host || '');
+    if (document.activeElement === document.body) focusRemoteSurface();
     setPrivacy(m.privacy);
     layout(); syncSettingsUI();
   }
@@ -559,6 +579,7 @@
     appStarted = true;
     retry = 0;
     connect();
+    focusRemoteSurface();
   }
   async function boot() {
     try {

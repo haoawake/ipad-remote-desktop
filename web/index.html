@@ -18,7 +18,7 @@
 <body>
 
 <!-- 画面 -->
-<div id="stage">
+<div id="stage" tabindex="0" role="application" aria-label="远程电脑画面。连接后直接使用外接键盘，无需打开屏幕键盘。">
   <div id="view">
     <canvas id="screen" width="16" height="10"></canvas>
     <img id="cursor" alt="" hidden>
@@ -32,7 +32,7 @@
 
 <!-- 顶部工具栏 -->
 <div id="toolbar">
-  <button data-act="keyboard" title="键盘"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M8 16h8"/></svg><span>键盘</span></button>
+  <button data-act="keyboard" title="打开 iPad 屏幕键盘（实体键盘无需点击）"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M8 16h8"/></svg><span>键盘</span></button>
   <button data-act="keys" title="快捷键"><svg viewBox="0 0 24 24"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/></svg><span>快捷键</span></button>
   <button data-act="mode" title="切换操作模式" id="btn-mode"><svg viewBox="0 0 24 24" class="ic-trackpad"><rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg><svg viewBox="0 0 24 24" class="ic-direct"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10m0-1.5a1.5 1.5 0 0 1 3 0V11m0-1a1.5 1.5 0 0 1 3 0v4.5A6.5 6.5 0 0 1 11.5 21h-.6a6 6 0 0 1-4.6-2.2L3.6 15.4a1.6 1.6 0 0 1 2.4-2.1L9 16"/></svg><span id="mode-label">触控板</span></button>
   <button data-act="privacy" title="隐私屏：电脑屏幕显示锁屏画面" id="btn-privacy" hidden><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>隐私屏</span></button>

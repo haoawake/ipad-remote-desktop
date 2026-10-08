@@ -16,6 +16,9 @@ name: release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths:
+      - '.github/release-request.txt'
   workflow_dispatch:
 
 permissions:
@@ -43,7 +46,8 @@ jobs:
       - name: build
         run: |
           ver=dev
-          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}";
+          elif [ -f .github/release-request.txt ]; then ver="$(tr -d '[:space:]' < .github/release-request.txt)"; ver="${ver#v}"; fi
           python scripts/build_portable.py "$ver"
 
       - name: smoke test
@@ -78,7 +82,8 @@ jobs:
       - name: build
         run: |
           ver=0.0.0
-          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}"; fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then ver="${GITHUB_REF_NAME#v}";
+          elif [ -f .github/release-request.txt ]; then ver="$(tr -d '[:space:]' < .github/release-request.txt)"; ver="${ver#v}"; fi
           python scripts/build_mac.py "$ver"
 
       - name: smoke test
@@ -102,7 +107,7 @@ jobs:
 
   publish:
     needs: [windows, macos]
-    if: always() && github.ref_type == 'tag' && needs.windows.result == 'success'
+    if: ${{ always() && (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && needs.windows.result == 'success' && (github.ref_type == 'tag' || needs.macos.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -119,6 +124,8 @@ jobs:
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_TYPE" != tag ]; then tag="$(tr -d '[:space:]' < .github/release-request.txt)"; fi
+          [[ "$tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]
           mkdir rel
           find dl -name '*.zip' -exec cp {} rel/ \;
           ls -la rel
@@ -132,6 +139,6 @@ jobs:
             gh release edit "$tag" --title "iPad 远程桌面 $tag" --notes-file notes.md --draft=false
             gh release upload "$tag" rel/* --clobber
           else
-            gh release create "$tag" rel/* --title "iPad 远程桌面 $tag" --notes-file notes.md
+            gh release create "$tag" rel/* --target "$GITHUB_SHA" --title "iPad 远程桌面 $tag" --notes-file notes.md
           fi
           gh release view "$tag" --json assets --jq '.assets[].name'

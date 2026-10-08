@@ -98,6 +98,18 @@ class EncoderTest(unittest.TestCase):
 
 
 class WebTest(unittest.TestCase):
+    def test_keyboard_focus_and_shortcut_forwarding(self):
+        html = (ROOT / "web" / "index.html").read_text("utf-8")
+        js = (ROOT / "web" / "app.js").read_text("utf-8")
+        self.assertIn('id="stage" tabindex="0"', html)
+        self.assertIn("function focusRemoteSurface()", js)
+        self.assertIn("focusRemoteSurface(); // touchstart", js)
+        self.assertIn("focusRemoteSurface();\n    if (!geom)", js)
+        self.assertIn("focusRemoteSurface();\n  }", js)
+        self.assertIn("}, true);\n  kbd.addEventListener('focus'", js)
+        self.assertIn("e.target.closest('input, textarea, select, button, a, [contenteditable]')", js)
+        self.assertIn("onKeyDown(e); // ⌘ on an iPad", js)
+
     def test_both_shortcut_panels(self):
         html = (ROOT / "web" / "index.html").read_text("utf-8")
         self.assertEqual(len(re.findall(r'class="keyrow" data-host="win"', html)), 3)
