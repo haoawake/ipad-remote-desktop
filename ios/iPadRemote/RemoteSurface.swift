@@ -299,6 +299,21 @@ private final class KeyboardCanvas: UIView {
         if let input = cmd.input { keyboard?.command(input, modifiers: cmd.modifierFlags) }
     }
 
+    // UIKit routes standard Cmd+C/X/V to UIResponderStandardEditActions before
+    // custom keyCommands. Do not copy/paste on the iPad: send the action to PC.
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(copy(_:)) || action == #selector(cut(_:)) ||
+           action == #selector(paste(_:)) || action == #selector(selectAll(_:)) {
+            return remote?.connected == true
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    @objc func copy(_ sender: Any?) { keyboard?.command("c", modifiers: [.command]) }
+    @objc func cut(_ sender: Any?) { keyboard?.command("x", modifiers: [.command]) }
+    @objc func paste(_ sender: Any?) { keyboard?.command("v", modifiers: [.command]) }
+    @objc func selectAll(_ sender: Any?) { keyboard?.command("a", modifiers: [.command]) }
+
     @objc private func tapped(_ g: UITapGestureRecognizer) {
         activate()
         guard let point = pointToRemote(g.location(in: self)) else { return }
